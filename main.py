@@ -18,11 +18,12 @@ import traceback
 import json
 from Utils import Utils
 import os
+from OpenAiTinderOperator import OpenAiTinderOperator
 
 dotenv.load_dotenv()
 
 in_docker = os.getenv("IN_DOCKER", False)
-if in_docker:
+if in_docker == "True":
     # Configurações do Selenium
     selenium_url = os.getenv("http://tinder-ai-bot-selenium-1:4444", "http://tinder-ai-bot-selenium-1:4444/wd/hub")
     options = selenium.webdriver.edge.options.Options()
@@ -45,23 +46,35 @@ class TinderBot:
 
     def __init__(self, driver = None):
         self.driver = driver
+        self.operator = OpenAiTinderOperator(os.getenv("OPENAI_API_KEY"))
 
     def login(self):
-        self.driver.get("https://tinder.com/")
-        # if cookie file exists, load cookies
-        if os.path.exists("cookies.pkl"):
-            with open("cookies.pkl", "rb") as f:
-                cookies = pickle.load(f)
-                for cookie in cookies:
-                    driver.add_cookie(cookie)
-        else:
-            # if cookie file doesn't exist, create it
+        while True:
             self.driver.get("https://tinder.com/")
-            input("When you're logged in, press enter to continue...")
-            cookies = self.driver.get_cookies()
-            with open("cookies.pkl", "wb") as f:
-                pickle.dump(cookies, f)
-            print("Cookies saved to cookies.pkl")
+            time.sleep(1)
+            # if cookie file exists, load cookies
+            print("Cookies file exists:", os.path.exists("cookies.pkl"))
+            if os.path.exists("cookies.pkl"):
+                with open("cookies.pkl", "rb") as f:
+                    cookies = pickle.load(f)
+                    for cookie in cookies:
+                        driver.add_cookie(cookie)
+            else:
+                # if cookie file doesn't exist, create it
+                self.driver.get("https://tinder.com/")
+                input("When you're logged in, press enter to continue...")
+                cookies = self.driver.get_cookies()
+                with open("cookies.pkl", "wb") as f:
+                    pickle.dump(cookies, f)
+                print("Cookies saved to cookies.pkl")
+            
+            # https://tinder.com/app/recs
+            time.sleep(1)
+            if self.driver.current_url == "https://tinder.com/app/recs":
+                break
+            elif os.path.exists("cookies.pkl"):
+                print("Your cookies are not valid, please login again")
+                os.remove("cookies.pkl")
 
     def get_profile_info(self):
         data = {}
@@ -138,13 +151,24 @@ class TinderBot:
     def click_pass_button(self):
         # (//div[contains(@class, 'gamepad-button-wrapper')])[3]
         button = Utils.wait_for_element(self.driver, "(//div[contains(@class, 'gamepad-button-wrapper')])[3]")
-        Utils.click_button(button)
+        Utils.click_button(self.driver, button)
 
     def click_like_button(self):
         # (//div[contains(@class, 'gamepad-button-wrapper')])[5]
         button = Utils.wait_for_element(self.driver, "(//div[contains(@class, 'gamepad-button-wrapper')])[5]")
-        Utils.click_button(button)
+        Utils.click_button(self.driver, button)
 
+    def like_or_not(self, user: dict): 
+        user_oneline = json.dumps(user, ensure_ascii=False)
+        choose = self.operator.choose_like_or_not(user_oneline)
+        print(choose)
+        if choose.like:
+            print("Like")
+            return True
+        else:
+            print("Not like")
+            return False
+        
 if __name__ == "__main__":
     try:
         tb = TinderBot(driver)
@@ -158,8 +182,21 @@ if __name__ == "__main__":
 
         input("Press enter to estract user info...")
         try:
-            user = tb.get_profile_info()
-            print(json.dumps(user, indent=4, ensure_ascii=False))
+            while True:
+                user = tb.get_profile_info()
+
+                input("Press enter to like or not the user...")
+                like_or_not = tb.like_or_not(user)
+                print(like_or_not)
+                if like_or_not:
+                    print("Like")
+                    tb.click_like_button()
+                else:
+                    print("Not like")
+                    tb.click_pass_button()
+                
+                Utils.random_sleep(1, 3)
+            
         except Exception as e:
             print(e)
             print(traceback.format_exc())
