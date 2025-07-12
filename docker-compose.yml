@@ -1,0 +1,13 @@
+version: '3'
+services:
+  bot:
+    build: .
+    depends_on:
+      - selenium
+    volumes:
+      - .:/app
+  
+  selenium:
+    image: selenium/standalone-chrome
+    ports:
+      - "4444:4444"
